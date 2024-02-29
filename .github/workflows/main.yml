@@ -1,0 +1,43 @@
+name: Server Workflows
+
+on: [workflow_dispatch]
+
+jobs:
+  build:
+
+    runs-on: windows-latest
+
+    env:
+      WIN_USER: ${{ secrets.WIN_USER }}
+      WIN_PASS: ${{ secrets.WIN_PASS }}
+      ZROK_ENV: ${{ secrets.ZROK_ENV }}
+
+    steps:
+    - name: Dl
+      run: |
+        Invoke-WebRequest https://www.gyan.dev/ffmpeg/builds/ffmpeg-git-full.7z -OutFile ffmpeg.7z
+        7z x "ffmpeg.7z" -o"ffmpeg"
+        $ffmpegPath = Join-Path (Get-Location) "ffmpeg"
+        $latestVersion = Get-ChildItem -Path $ffmpegPath -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if ($latestVersion) {
+            $binPath = Join-Path $latestVersion.FullName "bin"
+            "$env:Path += ';$binPath'"
+        }
+        Invoke-WebRequest https://github.com/openziti/zrok/releases/download/v0.4.24/zrok_0.4.24_windows_amd64.tar.gz -OutFile zrok.tar.gz
+        tar -xzvf zrok.tar.gz
+        Invoke-WebRequest https://get.videolan.org/vlc/3.0.20/win64/vlc-3.0.20-win64.msi -OutFile "vlc-installer.msi"
+        Invoke-WebRequest https://www.downloadhelper.net/install-converter-binary -OutFile "cvhlpr.exe"
+        
+    - name: ETS
+      run: |
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server'-name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+        Set-LocalUser -Name $Env:WIN_USER -Password (ConvertTo-SecureString -AsPlainText $Env:WIN_PASS -Force)
+
+    - name: Tnl
+      run: |
+        ls
+        pwd
+        .\zrok.exe enable $Env:ZROK_ENV
+        .\zrok.exe share private --backend-mode tcpTunnel 127.0.0.1:3389
